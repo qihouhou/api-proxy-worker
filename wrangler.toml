@@ -1,0 +1,8 @@
+name = "api-proxy"
+main = "src/index.js"
+compatibility_date = "2023-10-16"
+
+[triggers]
+routes = [
+  { pattern = "*", zone_name = "" }
+]
