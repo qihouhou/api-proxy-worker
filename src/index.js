@@ -1,73 +1,43 @@
 export default {
   async fetch(request, env, ctx) {
-    // 目标API服务器地址
-    const targetUrl = "http://47.94.43.237:8000";
-    
-    // 获取请求的路径
-    const url = new URL(request.url);
-    let pathname = url.pathname;
-    
-    // 修复双斜杠问题
-    if (pathname.startsWith('//')) {
-      pathname = pathname.replace('//', '/');
-    }
-    
-    // 构建新的目标URL
-    let newUrl = targetUrl + pathname;
-    
-    // 保留查询参数
-    const queryString = url.search;
-    if (queryString) {
-      newUrl += queryString;
-    }
-    
-    // 提取原始请求的方法、标头和主体
-    const method = request.method;
-    const headers = new Headers(request.headers);
-    
-    // 添加一个伪装的Host头以绕过Cloudflare的IP访问限制
-    headers.set('Host', 'api.example.com');  // 使用一个虚构的域名
-    
-    // 添加其他可能有助于绕过限制的头
-    headers.set('X-Forwarded-Host', 'api.example.com');
-    headers.set('Origin', 'https://api.example.com');
-    headers.set('Referer', 'https://api.example.com');
-    
-    const body = method === 'GET' || method === 'HEAD' ? null : await request.clone().arrayBuffer();
-    
-    // 创建新的请求
-    const newRequest = new Request(newUrl, {
-      method: method,
-      headers: headers,
-      body: body,
-    });
-
     try {
-      // 发送请求到目标服务器
-      const response = await fetch(newRequest);
+      // 从原始请求获取路径和查询参数
+      const url = new URL(request.url);
+      const pathname = url.pathname.replace(/^\/+/, ''); // 移除所有开头的斜杠
+      const search = url.search;
       
-      // 克隆响应以便修改标头
-      const newResponse = new Response(response.body, response);
+      // 构建新URL - 使用URL构造函数避免路径问题
+      const targetUrl = new URL(`http://47.94.43.237:8000/${pathname}${search}`);
+      console.log("Proxying to:", targetUrl.toString());
       
-      // 添加CORS标头允许所有来源
-      newResponse.headers.set('Access-Control-Allow-Origin', '*');
-      
-      // 如果是OPTIONS请求，处理预检请求
-      if (request.method === 'OPTIONS') {
-        newResponse.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-        newResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-        newResponse.headers.set('Access-Control-Max-Age', '86400');
-      }
-      
-      return newResponse;
-    } catch (error) {
-      // 返回更详细的错误信息
-      return new Response(`Proxy error: ${error.message}\nURL: ${newUrl}`, { 
-        status: 500,
+      // 简化的请求转发
+      const response = await fetch(targetUrl.toString(), {
+        method: request.method,
         headers: {
-          'Content-Type': 'text/plain'
+          'Content-Type': request.headers.get('Content-Type') || 'application/json',
+          'User-Agent': 'Cloudflare-Worker',
+          'Host': '47.94.43.237:8000'
+        },
+        body: ['GET', 'HEAD'].includes(request.method) ? null : await request.arrayBuffer(),
+      });
+      
+      // 返回响应，添加CORS头
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': '*',
+          'Access-Control-Allow-Headers': '*',
+          'Content-Type': response.headers.get('Content-Type') || 'application/json'
         }
       });
+    } catch (error) {
+      // 详细错误报告
+      return new Response(`Proxy error: ${error.name}: ${error.message}\nStack: ${error.stack}`, {
+        status: 500,
+        headers: { 'Content-Type': 'text/plain' }
+      });
     }
-  },
+  }
 };
