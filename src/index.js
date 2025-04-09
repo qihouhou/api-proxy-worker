@@ -24,6 +24,15 @@ export default {
     // 提取原始请求的方法、标头和主体
     const method = request.method;
     const headers = new Headers(request.headers);
+    
+    // 添加一个伪装的Host头以绕过Cloudflare的IP访问限制
+    headers.set('Host', 'api.example.com');  // 使用一个虚构的域名
+    
+    // 添加其他可能有助于绕过限制的头
+    headers.set('X-Forwarded-Host', 'api.example.com');
+    headers.set('Origin', 'https://api.example.com');
+    headers.set('Referer', 'https://api.example.com');
+    
     const body = method === 'GET' || method === 'HEAD' ? null : await request.clone().arrayBuffer();
     
     // 创建新的请求
@@ -52,8 +61,13 @@ export default {
       
       return newResponse;
     } catch (error) {
-      // 错误处理
-      return new Response(`Proxy error: ${error.message}`, { status: 500 });
+      // 返回更详细的错误信息
+      return new Response(`Proxy error: ${error.message}\nURL: ${newUrl}`, { 
+        status: 500,
+        headers: {
+          'Content-Type': 'text/plain'
+        }
+      });
     }
   },
 };
